@@ -60,9 +60,17 @@ class PostSerializer(serializers.ModelSerializer):
 
 
 class CommentSerializer(serializers.ModelSerializer):
+    text = serializers.CharField(allow_blank=True)
+
     class Meta:
         model = Comment
         fields = ['id', 'text', 'author', 'post', 'created_at']
+
+
+    def validate_text(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Comment text cannot be empty.")
+        return value
 
 
     def validate_post(self, value):

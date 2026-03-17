@@ -7,7 +7,7 @@ from factories.post_factory import PostFactory
 from singletons.config_manager import ConfigManager
 from singletons.logger_singleton import LoggerSingleton
 from .authentication import TokenAuthentication
-from .models import AuthToken, User, Post, Comment
+from .models import AuthToken, User, Post, Comment, Like
 from .permissions import IsAdminRole, IsPostAuthor
 from .serializers import (
     CommentSerializer,
@@ -131,6 +131,49 @@ class PostDetailView(APIView):
         self.check_object_permissions(request, post)
         serializer = PostDetailSerializer(post)
         return Response(serializer.data)
+
+
+class PostLikeView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        post = get_object_or_404(Post, pk=pk)
+
+        if Like.objects.filter(user=request.user, post=post).exists():
+            logger.warning("User '%s' attempted to like Post %s multiple times.", request.user.username, post.id)
+            return Response({'error': 'Post already liked.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        Like.objects.create(user=request.user, post=post)
+        logger.info("User '%s' liked Post %s.", request.user.username, post.id)
+        return Response({'message': 'Post liked successfully.'}, status=status.HTTP_201_CREATED)
+
+
+class PostCommentListCreateView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        post = get_object_or_404(Post, pk=pk)
+        comments = Comment.objects.filter(post=post).order_by('-created_at')
+        serializer = CommentSerializer(comments, many=True)
+        return Response(serializer.data)
+
+
+    def post(self, request, pk):
+        post = get_object_or_404(Post, pk=pk)
+        data = {
+            'text': request.data.get('text', ''),
+            'author': request.user.id,
+            'post': post.id,
+        }
+        serializer = CommentSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            logger.info("User '%s' commented on Post %s.", request.user.username, post.id)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        logger.warning("Comment creation failed on Post %s: %s", post.id, serializer.errors)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CommentListCreate(APIView):
