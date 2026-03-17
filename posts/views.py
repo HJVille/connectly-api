@@ -1,4 +1,7 @@
+from django.conf import settings
 from django.shortcuts import get_object_or_404
+from google.auth.transport.requests import Request as GoogleRequest
+from google.oauth2.id_token import verify_oauth2_token
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -11,6 +14,7 @@ from .models import AuthToken, User, Post, Comment, Like
 from .permissions import IsAdminRole, IsPostAuthor
 from .serializers import (
     CommentSerializer,
+    GoogleLoginSerializer,
     LoginSerializer,
     PostDetailSerializer,
     PostSerializer,
@@ -56,6 +60,71 @@ class UserLogin(APIView):
             )
         logger.warning("Login failed for username '%s'.", request.data.get('username'))
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GoogleLogin(APIView):
+    def post(self, request):
+        serializer = GoogleLoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token_data = verify_oauth2_token(
+                serializer.validated_data['id_token'],
+                GoogleRequest(),
+                settings.GOOGLE_OAUTH_CLIENT_ID or None,
+            )
+        except ValueError:
+            logger.warning("Google login failed: invalid or expired token.")
+            return Response(
+                {'error': 'Invalid or expired Google token.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email = token_data.get('email')
+        google_id = token_data.get('sub')
+
+        if not email or not google_id:
+            logger.warning("Google login failed: missing email or Google account ID.")
+            return Response(
+                {'error': 'Google account information is incomplete.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(google_id=google_id).first()
+
+        if user is None:
+            user = User.objects.filter(email=email).first()
+
+            if user is not None:
+                user.google_id = google_id
+                user.save(update_fields=['google_id'])
+            else:
+                base_username = email.split('@')[0]
+                username = base_username
+                counter = 1
+
+                while User.objects.filter(username=username).exists():
+                    username = f'{base_username}{counter}'
+                    counter += 1
+
+                user = User.objects.create(
+                    username=username,
+                    email=email,
+                    google_id=google_id,
+                )
+
+        token, _ = AuthToken.objects.get_or_create(user=user)
+        logger.info("Google login successful for '%s'.", user.username)
+        return Response(
+            {
+                'message': 'Authentication successful!',
+                'user_id': user.id,
+                'username': user.username,
+                'role': user.role,
+                'token': token.key,
+            }
+        )
 
 
 class AdminUserList(APIView):

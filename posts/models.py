@@ -18,6 +18,7 @@ class User(models.Model):
 
     username = models.CharField(max_length=100, unique=True)
     email = models.EmailField(unique=True)
+    google_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
     password = models.CharField(max_length=128, default=unusable_password)
     role = models.CharField(max_length=10, choices=Roles.choices, default=Roles.USER)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -131,3 +131,5 @@ PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
     'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
 ]
+
+GOOGLE_OAUTH_CLIENT_ID = '508195836404-0e40r19rrs11fnek5hfrki21e7hp9j3k.apps.googleusercontent.com'

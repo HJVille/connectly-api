@@ -44,6 +44,10 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 
+class GoogleLoginSerializer(serializers.Serializer):
+    id_token = serializers.CharField()
+
+
 class PostDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post

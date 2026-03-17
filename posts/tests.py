@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -119,3 +121,64 @@ class HomeworkFiveInteractionTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('Comment text cannot be empty.', response.json()['text'])
+
+
+class GoogleLoginTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+
+    @patch('posts.views.verify_oauth2_token')
+    def test_google_login_creates_user_and_returns_token(self, mock_verify):
+        mock_verify.return_value = {
+            'sub': 'google-user-123',
+            'email': 'googleuser@example.com',
+        }
+
+        response = self.client.post(
+            '/auth/google/login/',
+            {'id_token': 'valid-google-token'},
+            format='json',
+            secure=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['message'], 'Authentication successful!')
+        self.assertTrue(User.objects.filter(email='googleuser@example.com', google_id='google-user-123').exists())
+
+
+    @patch('posts.views.verify_oauth2_token')
+    def test_google_login_links_existing_user_by_email(self, mock_verify):
+        user = User.objects.create(username='existinguser', email='existing@example.com')
+
+        mock_verify.return_value = {
+            'sub': 'google-user-456',
+            'email': 'existing@example.com',
+        }
+
+        response = self.client.post(
+            '/auth/google/login/',
+            {'id_token': 'valid-google-token'},
+            format='json',
+            secure=True,
+        )
+
+        user.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(user.google_id, 'google-user-456')
+
+
+    @patch('posts.views.verify_oauth2_token')
+    def test_google_login_rejects_invalid_token(self, mock_verify):
+        mock_verify.side_effect = ValueError('Invalid token')
+
+        response = self.client.post(
+            '/auth/google/login/',
+            {'id_token': 'bad-token'},
+            format='json',
+            secure=True,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], 'Invalid or expired Google token.')
