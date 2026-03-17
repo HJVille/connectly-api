@@ -47,7 +47,7 @@ class LoginSerializer(serializers.Serializer):
 class PostDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['id', 'content', 'author', 'created_at']
+        fields = ['id', 'title', 'content', 'post_type', 'metadata', 'author', 'created_at']
 
 
 class PostSerializer(serializers.ModelSerializer):
@@ -56,7 +56,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Post
-        fields = ['id', 'content', 'author', 'created_at', 'comments']
+        fields = ['id', 'title', 'content', 'post_type', 'metadata', 'author', 'created_at', 'comments']
 
 
 class CommentSerializer(serializers.ModelSerializer):

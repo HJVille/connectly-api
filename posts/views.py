@@ -3,6 +3,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from factories.post_factory import PostFactory
+from singletons.config_manager import ConfigManager
+from singletons.logger_singleton import LoggerSingleton
 from .authentication import TokenAuthentication
 from .models import AuthToken, User, Post, Comment
 from .permissions import IsAdminRole, IsPostAuthor
@@ -13,6 +16,9 @@ from .serializers import (
     PostSerializer,
     UserSerializer,
 )
+
+config_manager = ConfigManager()
+logger = LoggerSingleton().get_logger()
 
 
 class UserListCreate(APIView):
@@ -25,8 +31,10 @@ class UserListCreate(APIView):
     def post(self, request):
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            user = serializer.save()
+            logger.info("User '%s' created successfully.", user.username)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+        logger.warning("User creation failed: %s", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -36,6 +44,7 @@ class UserLogin(APIView):
         if serializer.is_valid():
             user = serializer.validated_data['user']
             token, _ = AuthToken.objects.get_or_create(user=user)
+            logger.info("User '%s' logged in successfully.", user.username)
             return Response(
                 {
                     'message': 'Authentication successful!',
@@ -45,6 +54,7 @@ class UserLogin(APIView):
                     'token': token.key,
                 }
             )
+        logger.warning("Login failed for username '%s'.", request.data.get('username'))
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -58,22 +68,58 @@ class AdminUserList(APIView):
         return Response(serializer.data)
 
 
+class CreatePostView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        author_id = data.get('author', request.user.id)
+
+        try:
+            author = User.objects.get(pk=author_id)
+            post = PostFactory.create_post(
+                post_type=data['post_type'],
+                title=data['title'],
+                content=data.get('content', ''),
+                metadata=data.get('metadata', {}),
+                author=author,
+            )
+            logger.info("Post '%s' created successfully by '%s'.", post.title, author.username)
+            return Response(
+                {'message': 'Post created successfully!', 'post_id': post.id},
+                status=status.HTTP_201_CREATED,
+            )
+        except KeyError as exc:
+            logger.warning("Post creation failed: missing field '%s'.", exc.args[0])
+            return Response({'error': f"Missing field: {exc.args[0]}"}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            logger.warning("Post creation failed: invalid author '%s'.", author_id)
+            return Response({'error': 'Author not found.'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            logger.warning("Post creation failed: %s", exc)
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class PostListCreate(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        posts = Post.objects.all()
+        default_page_size = config_manager.get_setting('DEFAULT_PAGE_SIZE')
+        try:
+            limit = int(request.query_params.get('limit', default_page_size))
+        except (TypeError, ValueError):
+            limit = default_page_size
+
+        posts = Post.objects.all()[:limit]
         serializer = PostSerializer(posts, many=True)
+        logger.info("Retrieved %s posts.", len(serializer.data))
         return Response(serializer.data)
 
 
     def post(self, request):
-        serializer = PostSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return CreatePostView().post(request)
 
 
 class PostDetailView(APIView):
@@ -110,4 +156,5 @@ class ProtectedView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        logger.info("Protected endpoint accessed by '%s'.", request.user.username)
         return Response({"message": "Authenticated!"})

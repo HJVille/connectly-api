@@ -41,13 +41,25 @@ class User(models.Model):
 
 
 class Post(models.Model):
-    content = models.TextField()
+    class PostTypes(models.TextChoices):
+        TEXT = 'text', 'Text'
+        IMAGE = 'image', 'Image'
+        VIDEO = 'video', 'Video'
+
+    title = models.CharField(max_length=255, default='Untitled Post')
+    content = models.TextField(blank=True)
+    post_type = models.CharField(
+        max_length=10,
+        choices=PostTypes.choices,
+        default=PostTypes.TEXT,
+    )
+    metadata = models.JSONField(blank=True, default=dict)
     author = models.ForeignKey(User, related_name='posts', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
     def __str__(self):
-        return f"Post by {self.author.username} at {self.created_at}"
+        return f"{self.post_type} post '{self.title}' by {self.author.username}"
 
 
 class Comment(models.Model):
