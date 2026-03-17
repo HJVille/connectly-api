@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.paginator import EmptyPage, Paginator
 from django.shortcuts import get_object_or_404
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.id_token import verify_oauth2_token
@@ -123,6 +124,45 @@ class GoogleLogin(APIView):
                 'username': user.username,
                 'role': user.role,
                 'token': token.key,
+            }
+        )
+
+
+class FeedView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        default_page_size = config_manager.get_setting('DEFAULT_PAGE_SIZE')
+
+        try:
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', default_page_size))
+            if page < 1 or page_size < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Page and page_size must be positive integers.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        posts = Post.objects.all().order_by('-created_at', '-id')
+        paginator = Paginator(posts, page_size)
+
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            return Response({'error': 'Page not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PostSerializer(page_obj.object_list, many=True)
+        logger.info("Feed retrieved for '%s' on page %s.", request.user.username, page)
+        return Response(
+            {
+                'page': page,
+                'page_size': page_size,
+                'total_pages': paginator.num_pages,
+                'total_posts': paginator.count,
+                'results': serializer.data,
             }
         )
 

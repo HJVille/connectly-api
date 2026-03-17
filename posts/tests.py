@@ -1,6 +1,8 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from factories.post_factory import PostFactory
@@ -182,3 +184,76 @@ class GoogleLoginTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['error'], 'Invalid or expired Google token.')
+
+
+class HomeworkSevenFeedTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+        self.user = User.objects.create(username='feeduser', email='feed@example.com')
+        self.user.set_password('SecurePass123!')
+        self.user.save()
+        self.token = AuthToken.objects.create(user=self.user)
+
+        self.oldest_post = Post.objects.create(
+            title='Oldest Post',
+            content='Old content',
+            post_type=Post.PostTypes.TEXT,
+            metadata={},
+            author=self.user,
+        )
+        self.middle_post = Post.objects.create(
+            title='Middle Post',
+            content='Middle content',
+            post_type=Post.PostTypes.TEXT,
+            metadata={},
+            author=self.user,
+        )
+        self.newest_post = Post.objects.create(
+            title='Newest Post',
+            content='Newest content',
+            post_type=Post.PostTypes.TEXT,
+            metadata={},
+            author=self.user,
+        )
+
+        now = timezone.now()
+        Post.objects.filter(id=self.oldest_post.id).update(created_at=now - timedelta(days=2))
+        Post.objects.filter(id=self.middle_post.id).update(created_at=now - timedelta(days=1))
+        Post.objects.filter(id=self.newest_post.id).update(created_at=now)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+
+
+    def test_feed_returns_posts_sorted_by_date_with_pagination(self):
+        response = self.client.get('/feed/?page=1&page_size=2', secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['page'], 1)
+        self.assertEqual(response.json()['page_size'], 2)
+        self.assertEqual(response.json()['total_pages'], 2)
+        self.assertEqual(response.json()['total_posts'], 3)
+        self.assertEqual(response.json()['results'][0]['title'], 'Newest Post')
+        self.assertEqual(response.json()['results'][1]['title'], 'Middle Post')
+
+
+    def test_feed_second_page_returns_remaining_posts(self):
+        response = self.client.get('/feed/?page=2&page_size=2', secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()['results']), 1)
+        self.assertEqual(response.json()['results'][0]['title'], 'Oldest Post')
+
+
+    def test_feed_rejects_non_existent_page(self):
+        response = self.client.get('/feed/?page=3&page_size=2', secure=True)
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['error'], 'Page not found.')
+
+
+    def test_feed_rejects_invalid_page_values(self):
+        response = self.client.get('/feed/?page=0&page_size=0', secure=True)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], 'Page and page_size must be positive integers.')
