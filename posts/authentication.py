@@ -5,9 +5,11 @@ from .models import AuthToken
 
 
 class TokenAuthentication(BaseAuthentication):
+    # Read custom API tokens from the Authorization header used in Postman tests.
     keyword = 'Token'
 
     def authenticate(self, request):
+        # Public endpoints can continue without a token.
         auth_header = request.headers.get('Authorization', '')
         if not auth_header:
             return None
@@ -21,6 +23,7 @@ class TokenAuthentication(BaseAuthentication):
             return None
 
         try:
+            # Tokens link straight to the custom user record.
             token = AuthToken.objects.select_related('user').get(key=key)
         except AuthToken.DoesNotExist as exc:
             raise exceptions.AuthenticationFailed('Invalid token.') from exc

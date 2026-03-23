@@ -82,6 +82,14 @@ DATABASES = {
     }
 }
 
+CACHES = {
+    'default': {
+        # Local memory cache is enough for the Homework 9 feed cache demo.
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'connectly-feed-cache',
+    }
+}
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -119,6 +127,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# HTTPS settings from the security homework keep cookies and requests on TLS.
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
@@ -126,10 +135,12 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
+# Strong password hashers protect locally stored passwords.
 PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.Argon2PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
     'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
 ]
 
+# Google login verifies ID tokens against this OAuth client ID.
 GOOGLE_OAUTH_CLIENT_ID = '508195836404-0e40r19rrs11fnek5hfrki21e7hp9j3k.apps.googleusercontent.com'
